@@ -3,7 +3,12 @@ using DG.Tweening;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Numerics;
+using TMPro;
+using UnityEngine.Experimental.GlobalIllumination;
+using UnityEngine.Serialization;
+using UnityEngine.UI;
 using Quaternion = UnityEngine.Quaternion;
+using RenderSettings = UnityEngine.RenderSettings;
 using Vector3 = UnityEngine.Vector3;
 
 public class NewBehaviourScript : MonoBehaviour
@@ -16,11 +21,22 @@ public class NewBehaviourScript : MonoBehaviour
     [SerializeField] private GameObject gojo;
     [SerializeField] private GameObject tojiRotator;
     [SerializeField] private GameObject tojisKnife;
+    [SerializeField] private GameObject fakeToji;
 
     [Header("Placements")] [SerializeField]
     private List<Transform> placements;
 
     private Chain chain;
+
+    [Header("Lights")] 
+    [SerializeField] private Light pointLight;
+    [SerializeField] private Color skyboxMaterial;
+
+    [FormerlySerializedAs("text")] [Header("UI")] [SerializeField] private TextMeshProUGUI textUI;
+    
+    [SerializeField] private List<String> dialogues = new List<String>();
+
+    [SerializeField] private Color purpleColor = Color.magenta;
     
     [Header("Misc")]
     [SerializeField] private float timeScale = 1f;
@@ -129,11 +145,82 @@ public class NewBehaviourScript : MonoBehaviour
                 .OnComplete(()=>
                 {
                     tojisKnife.SetActive(false);
+                    // Put camera in gojos face
                     SetMainCameraTransform(4);
+                    fakeToji.SetActive(true);
                 })
         );
+
+        // Add sequence with slow mo knife going through gojos face
+        var fakeTojiOriginalRotation = fakeToji.transform.rotation.eulerAngles;
+        var fakeTojiFinalRotation = fakeTojiOriginalRotation;
+        fakeTojiFinalRotation.y = 2;
+        seq.Append(
+            fakeToji.transform.DORotate(fakeTojiFinalRotation, 3f)            
+                .SetEase(Ease.Linear)
+        );
+        // Make face light brighter
+        seq.Append(
+            pointLight.DOIntensity(1.19f, 2)
+        );
+        seq.Append(
+            pointLight.DOIntensity(1.19f, 0.75f) // just a delay, does nothing
+                .OnComplete(()=>
+                {
+                    SetMainCameraTransform(5);
+                    fakeToji.SetActive(false);
+                })
+        );
+        // Look at gojo from above
+        seq.Append(
+            pointLight.DOIntensity(1.19f, 2f) // Another delay, still does nothing
+                .OnComplete(() =>
+                {
+                    SetMainCameraTransform(6);
+                    // Play first Dialogue
+                    PlayText(dialogues[0], 1f);
+                })
+            );
+        // Make gojo float again
+        seq.Append(
+            gojo.transform.DOMove(gojo.transform.position + maxFloatHeight * Vector3.up, 1.5f)
+                .SetEase(Ease.InOutSine)
+                .SetLoops(3, LoopType.Yoyo)
+                .OnComplete(()=>
+                {
+                    // Prepare gojo for next scene
+                    textUI.text = "";
+                    // Set camera looking to the sky
+                    SetMainCameraTransform(7);
+                    
+                    // Put gojo under the camera to move it upwards in the next tween
+                    gojo.transform.position = placements[2].position;
+                    gojo.transform.rotation = placements[2].rotation;
+                })
+            );
+
+        // Move gojo towards
+        seq.Append(
+            gojo.transform.DOMove(placements[3].position, 1f)
+                // Play dialogue: "Throughout the heavens and earth..."
+                .OnComplete(() => PlayText(dialogues[1], 1f))
+            );
+        seq.Append(
+                // Does nothing, it's a delay to play the second line later
+                gojo.transform.DOMove(placements[3].position, 2f) 
+                    // Play dialogue: "I alone am the honored one"
+                .OnComplete(() =>
+                    {
+                        RenderSettings.skybox.color = purpleColor;
+                        PlayText(dialogues[2], 1f);
+                    })
+            );
+        seq.AppendInterval(1);
         
-        
+        // Now change to looking to the angle view and tint the lights purple
+        // seq.Append(
+        //     // changing the tint color of the skybox material will change global light
+        // );
 
 
         seq.Play();
@@ -151,5 +238,27 @@ public class NewBehaviourScript : MonoBehaviour
         // Vector3.forward
         camera.transform.position = cameras[cameraIndex].transform.position;
         camera.transform.rotation = cameras[cameraIndex].transform.rotation;
+    }
+
+    void PlayText(string text, float time)
+    {
+        float timePerChar = time / text.Length;
+
+        IEnumerator<WaitForSeconds> PlayTextCoroutine()
+        {
+            for (int i = 1; i <= text.Length; i++)
+            {
+                var newMsg = text.Substring(0, i);
+                textUI.text = newMsg;
+                yield return new WaitForSeconds(timePerChar);
+            }
+        }
+        
+        StartCoroutine(PlayTextCoroutine());
+    }
+
+    void SetSkyboxTint()
+    {
+        RenderSettings.skybox.color = purpleColor;
     }
 }
